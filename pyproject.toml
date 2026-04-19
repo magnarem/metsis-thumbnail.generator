@@ -28,6 +28,9 @@ wms = [
     "OWSLib",
     "pykdtree",
 ]
+solrindexer = [
+    "solrindexer @ git+https://github.com/metno/solr-indexer.git@feature/bulkindex-pipeline",
+]
 dev = [
     "pytest>=8.0",
     "ruff>=0.5",
