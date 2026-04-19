@@ -12,7 +12,6 @@ license = { text = "GPL-3.0" }
 authors = [{ name = "MET Norway", email = "csw-services@met.no" }]
 dependencies = [
     "click>=8.1",
-    "coloredlogs>=15.0",
     "lxml>=5.0",
     "pydantic>=2.6",
     "pysolr>=3.9",
@@ -22,6 +21,9 @@ dependencies = [
 ]
 
 [project.optional-dependencies]
+colored = [
+    "coloredlogs>=15.0",
+]
 wms = [
     "cartopy",
     "matplotlib",

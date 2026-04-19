@@ -1,12 +1,14 @@
 # Core dependencies (mirrors pyproject.toml [project.dependencies])
 click>=8.1
-coloredlogs>=15.0 #MAKE DYNAMIC OR ASK TO BE ADDED TO MAMBA ENV
 lxml>=5.0
 pydantic>=2.6
 pysolr>=3.9
 python-dateutil>=2.8
 PyYAML>=6.0
 tqdm>=4.66
+
+# Optional: colored console output (pip install .[colored])
+# coloredlogs>=15.0
 
 # Optional: WMS thumbnail generation (pip install .[wms])
 cartopy
