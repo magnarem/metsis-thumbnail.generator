@@ -1,0 +1,75 @@
+[build-system]
+requires = ["setuptools>=69", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "metsis-thumbnail-generator"
+version = "0.1.0"
+description = "Generate thumbnails for MMD datasets and update Solr thumbnail_url"
+readme = "README.md"
+requires-python = ">=3.9"
+license = { text = "GPL-3.0" }
+authors = [{ name = "MET Norway", email = "csw-services@met.no" }]
+dependencies = [
+    "click>=8.1",
+    "coloredlogs>=15.0",
+    "lxml>=5.0",
+    "pydantic>=2.6",
+    "pysolr>=3.9",
+    "python-dateutil>=2.8",
+    "PyYAML>=6.0",
+    "tqdm>=4.66",
+]
+
+[project.optional-dependencies]
+wms = [
+    "cartopy",
+    "matplotlib",
+    "OWSLib",
+    "pykdtree",
+]
+dev = [
+    "pytest>=8.0",
+    "ruff>=0.5",
+    "mypy>=1.10",
+    "bandit[toml]>=1.7",
+    "types-PyYAML",
+    "types-python-dateutil",
+    "tox>=4.15",
+]
+
+[project.scripts]
+thumbnail-generator = "metsis_thumbnail_generator.cli:main"
+
+[tool.setuptools]
+package-dir = {"" = "src"}
+
+[tool.setuptools.packages.find]
+where = ["src"]
+
+[tool.ruff]
+line-length = 99
+target-version = "py39"
+
+[tool.ruff.lint]
+select = ["E", "F", "I", "W"]
+ignore = ["E501"]
+
+[tool.pytest.ini_options]
+testpaths = ["tests"]
+
+[tool.bandit]
+exclude_dirs = ["tests", ".venv", "venv"]
+skips = ["B101"]
+
+[tool.mypy]
+python_version = "3.9"
+strict = true
+ignore_missing_imports = true
+
+[[tool.mypy.overrides]]
+module = [
+    "metsis_thumbnail_generator.cli",
+    "metsis_thumbnail_generator.config",
+]
+disallow_untyped_decorators = false
