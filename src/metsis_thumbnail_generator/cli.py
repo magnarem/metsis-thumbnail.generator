@@ -2,12 +2,14 @@
 
 from __future__ import annotations
 
+from collections.abc import Iterator
 from multiprocessing import Process, Queue
 from pathlib import Path
 from typing import Any
 
 import click
 import pysolr
+from tqdm import tqdm
 
 from .config import SolrConnectionConfig, load_app_config, load_solr_config
 from .errors import ConfigError, ThumbnailGeneratorError
@@ -63,7 +65,7 @@ def _collect_tasks(
     return []
 
 
-def _run_workers(
+def _run_workers_streaming(
     tasks: list[ThumbnailTask],
     num_processes: int,
     wms_projection: str,
@@ -72,7 +74,8 @@ def _run_workers(
     wms_zoom: float,
     wms_coastlines: bool,
     wms_extent: list[float] | None,
-) -> list[WorkerResult]:
+) -> Iterator[WorkerResult]:
+    """Start workers and yield results as they complete to avoid holding all png_bytes in memory."""
     task_queue: Queue[Any] = Queue()
     result_queue: Queue[Any] = Queue()
 
@@ -100,16 +103,13 @@ def _run_workers(
     for _ in workers:
         task_queue.put(None)
 
-    results: list[WorkerResult] = []
     for _ in tasks:
         result = result_queue.get()
         if isinstance(result, WorkerResult):
-            results.append(result)
+            yield result
 
     for process in workers:
         process.join()
-
-    return results
 
 
 @click.command()
@@ -248,7 +248,15 @@ def main(
         logger.info("Dry-run enabled, skipping multiprocessing generation")
         return
 
-    results = _run_workers(
+    output = ThumbnailOutput(
+        base_path=effective_output_path, base_url=app_config.thumbnail_base_url
+    )
+    failures = FailureTracker()
+    solr_updates: list[tuple[str, str]] = []
+    task_by_id = {task.metadata_identifier: task for task in tasks}
+    succeeded = 0
+
+    result_stream = _run_workers_streaming(
         tasks=tasks,
         num_processes=effective_processes,
         wms_projection=effective_wms_projection,
@@ -259,32 +267,27 @@ def main(
         wms_extent=effective_wms_extent,
     )
 
-    output = ThumbnailOutput(
-        base_path=effective_output_path, base_url=app_config.thumbnail_base_url
-    )
-    failures = FailureTracker()
-    solr_updates: list[tuple[str, str]] = []
-    task_by_id = {task.metadata_identifier: task for task in tasks}
+    with tqdm(total=len(tasks), desc="Generating thumbnails", unit="thumb") as progress:
+        for result in result_stream:
+            progress.update(1)
 
-    for result in results:
-        if result.error:
-            failures.add(result.metadata_identifier, result.error)
-            continue
+            if result.error:
+                failures.add(result.metadata_identifier, result.error)
+                continue
 
-        if result.png_bytes is None:
-            failures.add(result.metadata_identifier, "Empty thumbnail bytes")
-            continue
+            if result.png_bytes is None:
+                failures.add(result.metadata_identifier, "Empty thumbnail bytes")
+                continue
 
-        task = task_by_id.get(result.metadata_identifier)
-        if task is None:
-            failures.add(result.metadata_identifier, "Task not found during output stage")
-            continue
+            task = task_by_id.get(result.metadata_identifier)
+            if task is None:
+                failures.add(result.metadata_identifier, "Task not found during output stage")
+                continue
 
-        _, public_url = output.save_thumbnail(
-            task=task, png_bytes=result.png_bytes
-        )
-        if update_solr_thumbnail_url and public_url is not None:
-            solr_updates.append((task.metadata_identifier, public_url))
+            _, public_url = output.save_thumbnail(task=task, png_bytes=result.png_bytes)
+            succeeded += 1
+            if update_solr_thumbnail_url and public_url is not None:
+                solr_updates.append((task.metadata_identifier, public_url))
 
     updated = 0
     if update_solr_thumbnail_url and target_solr_client and solr_updates:
@@ -297,7 +300,7 @@ def main(
         except Exception as exc:  # noqa: BLE001
             raise click.ClickException(f"Failed to update Solr: {exc}") from exc
 
-    logger.info("Created thumbnails: %d", len(results) - len(failures.failures))
+    logger.info("Created thumbnails: %d", succeeded)
     logger.info("Solr thumbnail_url updates: %d", updated)
     logger.info("Failures: %d", len(failures.failures))
     for failure in failures.failures:
